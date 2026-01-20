@@ -268,16 +268,41 @@
     </div>
 </div>
 
-<!-- LƯU Ý: Phải đặt file tracks.js cùng thư mục và XÓA dòng 'export default tracks' trong file tracks.js -->
-<script src="tracks.js"></script>
+<script type="module">
+    const TRACKS_URL = 'https://raw.githubusercontent.com/d4m-dev/media/refs/heads/main/load-track/tracks.js';
+    const normalizeTracks = (items = []) => items.map((item) => ({
+        name: item.title || item.name || 'Tạm thời chưa có!',
+        artist: item.artist || 'Tạm thời chưa có!',
+        artwork: item.cover || item.artwork || 'Tạm thời chưa có!',
+        path: item.audioSrc || item.path || 'Tạm thời chưa có!',
+        instrumental: item.instrumentalSrc || item.instrumental || 'Tạm thời chưa có!',
+        vid: item.videoSrc || item.vid || 'Tạm thời chưa có!',
+        lyric: item.lyricSrc || item.lyric || 'Tạm thời chưa có!'
+    }));
 
-<script>
-    // Kiểm tra xem tracks có tồn tại không (do load từ file tracks.js)
-    if (typeof tracks === 'undefined') {
-        document.getElementById('title').innerText = "Lỗi tải file";
-        document.getElementById('artist').innerText = "Kiểm tra file tracks.js";
-        alert("Lỗi: Không tìm thấy biến 'tracks'.\n\nHãy mở file 'tracks.js' và XÓA dòng 'export default tracks;' ở cuối file đi nhé!");
+    async function loadTracks() {
+        try {
+            const response = await fetch(TRACKS_URL, { cache: 'no-store' });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const scriptText = await response.text();
+
+            const sandbox = {};
+            const extractTracks = new Function(
+                'window',
+                'self',
+                'globalThis',
+                `${scriptText}; return window.TRACKS || self.TRACKS || globalThis.TRACKS;`
+            );
+            const rawTracks = extractTracks(sandbox, sandbox, sandbox);
+            const list = Array.isArray(rawTracks) ? rawTracks : (rawTracks?.tracks || []);
+            return normalizeTracks(list);
+        } catch (error) {
+            console.error('Lỗi tải tracks từ URL:', error);
+            return [];
+        }
     }
+
+    const tracks = await loadTracks();
 
     const musicWidget = document.getElementById('music-widget');
     const playBtn = document.getElementById('play');
@@ -571,9 +596,12 @@
     closeLyrics.addEventListener('click', () => lyricsOverlay.classList.remove('show'));
 
     // Init
-    if (typeof tracks !== 'undefined' && tracks.length > 0) {
+    if (Array.isArray(tracks) && tracks.length > 0) {
         loadSong(tracks[songIndex]);
         renderPlaylist();
+    } else {
+        title.innerText = "Lỗi tải danh sách";
+        artist.innerText = "Không thể tải tracks";
     }
 </script>
 
