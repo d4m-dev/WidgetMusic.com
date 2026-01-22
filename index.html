@@ -279,30 +279,22 @@
         vid: item.videoSrc || item.vid || 'Tạm thời chưa có!',
         lyric: item.lyricSrc || item.lyric || 'Tạm thời chưa có!'
     }));
-
-    async function loadTracks() {
+    const loadRemoteTracks = async () => {
+        if (Array.isArray(window.TRACKS) && window.TRACKS.length) return window.TRACKS;
         try {
-            const response = await fetch(TRACKS_URL, { cache: 'no-store' });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const scriptText = await response.text();
-
+            const res = await fetch(TRACKS_URL, { cache: 'no-store' });
+            const text = await res.text();
             const sandbox = {};
-            const extractTracks = new Function(
-                'window',
-                'self',
-                'globalThis',
-                `${scriptText}; return window.TRACKS || self.TRACKS || globalThis.TRACKS;`
-            );
-            const rawTracks = extractTracks(sandbox, sandbox, sandbox);
-            const list = Array.isArray(rawTracks) ? rawTracks : (rawTracks?.tracks || []);
-            return normalizeTracks(list);
-        } catch (error) {
-            console.error('Lỗi tải tracks từ URL:', error);
+            const getter = new Function('window', `${text}; return window.TRACKS || [];`);
+            const data = getter(sandbox);
+            return Array.isArray(data) ? data : [];
+        } catch (e) {
             return [];
         }
-    }
+    };
 
-    const tracks = await loadTracks();
+    const tracks = await loadRemoteTracks().then(normalizeTracks);
+
 
     const musicWidget = document.getElementById('music-widget');
     const playBtn = document.getElementById('play');
@@ -333,19 +325,36 @@
     let songIndex = 0;
     let lyricsData = [];
 
-    // Hàm chuyển đổi link Github redirect sang direct link để tránh lỗi Audio
-    function fixGithubUrl(url) {
-        if (!url) return '';
-        if (url.includes('github.com') && url.includes('/raw/')) {
-            return url.replace('github.com', 'raw.githubusercontent.com').replace('/raw/', '/');
+    // Hàm xử lý URL GitHub
+    function fixGithubUrl(url, isMedia = false) {
+        if (!url || url === '' || url === 'Tạm thời chưa có!') return '';
+        
+        if (!url.includes('github.com') || !url.includes('/raw/')) return url;
+        
+        const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)\/raw\/(.+)/);
+        if (!match) return url;
+        
+        const owner = match[1];
+        const repo = match[2];
+        const path = match[3];
+        const fullPath = path.startsWith('refs/heads/') ? path : 'refs/heads/' + path;
+        
+        // Phân biệt: ảnh dùng raw.githubusercontent.com, audio/video dùng media.githubusercontent.com
+        const isAudioVideo = /\.(mp3|mp4|wav|ogg|webm|m4a)$/i.test(url);
+        
+        if (isAudioVideo) {
+            // Audio/Video: media CDN
+            return `https://media.githubusercontent.com/media/${owner}/${repo}/${fullPath}`;
+        } else {
+            // Ảnh/Text: raw CDN
+            return `https://raw.githubusercontent.com/${owner}/${repo}/${fullPath}`;
         }
-        return url;
     }
 
     function loadSong(song) {
         title.innerText = song.name;
         artist.innerText = song.artist;
-        cover.src = song.artwork;
+        cover.src = fixGithubUrl(song.artwork);
 
         const isInstrumental = instrumentalToggle.checked;
         let audioSrc = "";
@@ -360,14 +369,43 @@
             modeLabel.style.color = "#b2bec3";
         }
 
-        // Kiểm tra nếu link rỗng hoặc lỗi
-        if (!audioSrc || audioSrc.includes('..4.mp4')) {
-             console.warn("Link bài hát không hợp lệ:", audioSrc);
+        // Kiểm tra nếu link rỗng
+        if (!audioSrc || audioSrc === '') {
+            console.warn("⚠️ Link bài hát không có:", song.name);
+            title.innerText = song.name + " (Chưa có nhạc)";
+            audio.src = '';
+            return;
         }
 
+        console.log('🎵 Loading audio from:', audioSrc);
+        
+        // Reset audio state
+        audio.pause();
+        audio.currentTime = 0;
+        
+        // Set audio source
         audio.src = audioSrc;
+        
+        // Preload audio
+        audio.load();
+        
         updatePlaylistActive();
         loadLyrics(fixGithubUrl(song.lyric));
+        
+        // Log khi audio sẵn sàng
+        audio.addEventListener('loadeddata', function onLoaded() {
+            console.log('✅ Audio loaded successfully!');
+            audio.removeEventListener('loadeddata', onLoaded);
+        }, { once: true });
+        
+        // Log nếu có lỗi
+        audio.addEventListener('error', function onError(e) {
+            console.error('❌ Audio error:', audio.error);
+            console.error('Error code:', audio.error?.code);
+            console.error('Error message:', audio.error?.message);
+            console.error('Failed URL:', audioSrc);
+            audio.removeEventListener('error', onError);
+        }, { once: true });
     }
 
     async function loadLyrics(lyricUrl) {
@@ -543,14 +581,14 @@
 
     function renderPlaylist() {
         playlistList.innerHTML = '';
-        if(typeof tracks !== 'undefined') {
+        if(tracks && tracks.length > 0) {
             tracks.forEach((song, index) => {
                 const item = document.createElement('div');
                 item.classList.add('playlist-item');
                 if (index === songIndex) item.classList.add('active');
                 
                 item.innerHTML = `
-                    <img src="${song.artwork}" class="item-img">
+                    <img src="${fixGithubUrl(song.artwork)}" class="item-img" onerror="this.src='https://via.placeholder.com/35'">
                     <div class="item-info">
                         <div class="item-title">${song.name}</div>
                         <div class="item-artist">${song.artist}</div>
@@ -597,7 +635,7 @@
 
     // Init
     if (Array.isArray(tracks) && tracks.length > 0) {
-        loadSong(tracks[songIndex]);
+        loadSong(tracks[0]);
         renderPlaylist();
     } else {
         title.innerText = "Lỗi tải danh sách";
