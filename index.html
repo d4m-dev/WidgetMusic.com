@@ -143,6 +143,76 @@
     .progress-container:hover .progress::after { opacity: 1; }
     .time-stamps { display: flex; justify-content: space-between; font-size: 11px; color: #b2bec3; margin-top: 5px; }
 
+    /* Volume Control */
+    .volume-container {
+        display: flex; align-items: center; gap: 12px;
+        margin: 15px 0 25px; z-index: 1; position: relative;
+    }
+    
+    .volume-btn {
+        background: none; border: none;
+        color: #b2bec3; font-size: 18px;
+        cursor: pointer; transition: all 0.3s;
+        width: 35px; height: 35px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 50%;
+    }
+    
+    .volume-btn:hover {
+        color: #ff7675;
+        background: #fff0f0;
+    }
+    
+    .volume-btn.muted {
+        color: #d63031;
+    }
+    
+    .volume-slider-container {
+        flex: 1; position: relative;
+        background: #dfe6e9; border-radius: 5px;
+        height: 5px; cursor: pointer;
+    }
+    
+    .volume-slider {
+        position: absolute; top: 50%; left: 0;
+        transform: translateY(-50%);
+        width: 100%; height: 5px;
+        -webkit-appearance: none; appearance: none;
+        background: transparent; outline: none;
+        cursor: pointer; z-index: 2;
+    }
+    
+    .volume-slider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 14px; height: 14px;
+        background: #d63031; border-radius: 50%;
+        cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        transition: transform 0.2s;
+    }
+    
+    .volume-slider::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+    }
+    
+    .volume-slider::-moz-range-thumb {
+        width: 14px; height: 14px;
+        background: #d63031; border-radius: 50%;
+        cursor: pointer; border: none;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    
+    .volume-fill {
+        position: absolute; top: 0; left: 0;
+        height: 100%; background: linear-gradient(90deg, #ff7675, #d63031);
+        border-radius: 5px; pointer-events: none;
+        transition: width 0.1s linear;
+    }
+    
+    .volume-percentage {
+        font-size: 11px; color: #b2bec3;
+        min-width: 35px; text-align: right;
+    }
+
     /* Navigation Buttons */
     .navigation {
         display: flex; align-items: center; justify-content: center;
@@ -158,6 +228,49 @@
         transition: transform 0.2s;
     }
     .action-btn-big:hover { transform: scale(1.1); box-shadow: 0 15px 25px rgba(214, 48, 49, 0.4); color: #fff; }
+    
+    /* Shuffle & Repeat Buttons */
+    .mode-btn {
+        background: none; border: none;
+        color: #b2bec3; font-size: 16px;
+        cursor: pointer; transition: all 0.3s;
+        width: 35px; height: 35px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 50%;
+        position: relative;
+    }
+    .mode-btn:hover {
+        color: #636e72;
+        background: #f1f2f6;
+    }
+    .mode-btn.active {
+        color: #ff7675;
+        background: #fff0f0;
+    }
+    .mode-btn.active:hover {
+        color: #d63031;
+    }
+    
+    /* Repeat One Badge */
+    .mode-btn::after {
+        content: attr(data-badge);
+        position: absolute;
+        top: -2px; right: -2px;
+        background: #d63031;
+        color: white;
+        font-size: 9px;
+        font-weight: 600;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .mode-btn.repeat-one::after {
+        display: flex;
+    }
 
     /* --- Overlay Containers --- */
     .overlay-container {
@@ -243,10 +356,23 @@
         <span id="duration">0:00</span>
     </div>
 
+    <div class="volume-container">
+        <button class="volume-btn" id="mute-btn" title="Tắt/Bật tiếng">
+            <i class="fas fa-volume-up"></i>
+        </button>
+        <div class="volume-slider-container">
+            <div class="volume-fill" id="volume-fill"></div>
+            <input type="range" min="0" max="100" value="70" class="volume-slider" id="volume-slider">
+        </div>
+        <span class="volume-percentage" id="volume-percentage">70%</span>
+    </div>
+
     <div class="navigation">
+        <button id="shuffle" class="mode-btn" title="Ngẫu nhiên"><i class="fas fa-random"></i></button>
         <button id="prev" class="action-btn"><i class="fas fa-backward"></i></button>
         <button id="play" class="action-btn action-btn-big"><i class="fas fa-play"></i></button>
         <button id="next" class="action-btn"><i class="fas fa-forward"></i></button>
+        <button id="repeat" class="mode-btn" title="Lặp lại"><i class="fas fa-redo"></i></button>
     </div>
 
     <div class="overlay-container" id="playlist-overlay">
@@ -321,9 +447,19 @@
     const lyricsOverlay = document.getElementById('lyrics-overlay');
     const closeLyrics = document.getElementById('close-lyrics');
     const lyricsContent = document.getElementById('lyrics-content');
+    const volumeSlider = document.getElementById('volume-slider');
+    const volumeFill = document.getElementById('volume-fill');
+    const volumePercentage = document.getElementById('volume-percentage');
+    const muteBtn = document.getElementById('mute-btn');
+    
+    const shuffleBtn = document.getElementById('shuffle');
+    const repeatBtn = document.getElementById('repeat');
 
     let songIndex = 0;
     let lyricsData = [];
+    let lastVolume = 70;
+    let isShuffleOn = false;
+    let repeatMode = 0; // 0: off, 1: repeat all, 2: repeat one
 
     // Hàm xử lý URL GitHub
     function fixGithubUrl(url, isMedia = false) {
@@ -499,10 +635,53 @@
     }
 
     function nextSong() {
-        songIndex++;
-        if (songIndex > tracks.length - 1) songIndex = 0;
+        if (isShuffleOn) {
+            let newIndex;
+            do {
+                newIndex = Math.floor(Math.random() * tracks.length);
+            } while (newIndex === songIndex && tracks.length > 1);
+            songIndex = newIndex;
+        } else {
+            songIndex++;
+            if (songIndex > tracks.length - 1) songIndex = 0;
+        }
         loadSong(tracks[songIndex]);
         playSong();
+    }
+    
+    function toggleShuffle() {
+        isShuffleOn = !isShuffleOn;
+        if (isShuffleOn) {
+            shuffleBtn.classList.add('active');
+        } else {
+            shuffleBtn.classList.remove('active');
+        }
+    }
+    
+    function toggleRepeat() {
+        repeatMode = (repeatMode + 1) % 3;
+        const icon = repeatBtn.querySelector('i');
+        
+        if (repeatMode === 0) {
+            // Off
+            repeatBtn.classList.remove('active', 'repeat-one');
+            repeatBtn.removeAttribute('data-badge');
+            icon.className = 'fas fa-redo';
+            repeatBtn.setAttribute('title', 'Lặp lại');
+        } else if (repeatMode === 1) {
+            // Repeat one (lần ấn đầu tiên)
+            repeatBtn.classList.add('active', 'repeat-one');
+            repeatBtn.setAttribute('data-badge', '1');
+            icon.className = 'fas fa-redo';
+            repeatBtn.setAttribute('title', 'Lặp 1 bài');
+        } else {
+            // Repeat all (lần ấn thứ 2)
+            repeatBtn.classList.add('active');
+            repeatBtn.classList.remove('repeat-one');
+            repeatBtn.removeAttribute('data-badge');
+            icon.className = 'fas fa-redo';
+            repeatBtn.setAttribute('title', 'Lặp tất cả');
+        }
     }
 
     instrumentalToggle.addEventListener('change', () => {
@@ -613,11 +792,52 @@
         });
     }
 
+    // --- VOLUME CONTROLS ---
+    function updateVolume() {
+        const volume = volumeSlider.value;
+        audio.volume = volume / 100;
+        volumeFill.style.width = `${volume}%`;
+        volumePercentage.textContent = `${volume}%`;
+        
+        const icon = muteBtn.querySelector('i');
+        if (volume == 0) {
+            icon.className = 'fas fa-volume-mute';
+            muteBtn.classList.add('muted');
+        } else if (volume < 50) {
+            icon.className = 'fas fa-volume-down';
+            muteBtn.classList.remove('muted');
+        } else {
+            icon.className = 'fas fa-volume-up';
+            muteBtn.classList.remove('muted');
+        }
+        
+        if (volume > 0) lastVolume = volume;
+    }
+
+    function toggleMute() {
+        if (audio.volume > 0) {
+            lastVolume = volumeSlider.value;
+            volumeSlider.value = 0;
+        } else {
+            volumeSlider.value = lastVolume || 70;
+        }
+        updateVolume();
+    }
+
     playBtn.addEventListener('click', togglePlay);
     prevBtn.addEventListener('click', prevSong);
     nextBtn.addEventListener('click', nextSong);
     audio.addEventListener('timeupdate', updateProgress);
-    audio.addEventListener('ended', nextSong);
+    audio.addEventListener('ended', () => {
+        if (repeatMode === 1) {
+            // Repeat one: play lại bài hiện tại
+            audio.currentTime = 0;
+            playSong();
+        } else if (repeatMode === 2 || repeatMode === 0) {
+            // Repeat all hoặc off: chuyển bài tiếp theo
+            nextSong();
+        }
+    });
     progressContainer.addEventListener('click', setProgress);
 
     playlistBtn.addEventListener('click', () => {
@@ -633,6 +853,12 @@
     });
     closeLyrics.addEventListener('click', () => lyricsOverlay.classList.remove('show'));
 
+    volumeSlider.addEventListener('input', updateVolume);
+    muteBtn.addEventListener('click', toggleMute);
+    
+    shuffleBtn.addEventListener('click', toggleShuffle);
+    repeatBtn.addEventListener('click', toggleRepeat);
+
     // Init
     if (Array.isArray(tracks) && tracks.length > 0) {
         loadSong(tracks[0]);
@@ -641,6 +867,10 @@
         title.innerText = "Lỗi tải danh sách";
         artist.innerText = "Không thể tải tracks";
     }
+    
+    // Set initial volume
+    audio.volume = 0.7;
+    updateVolume();
 </script>
 
 </body>
