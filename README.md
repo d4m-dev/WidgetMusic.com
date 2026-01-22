@@ -7,9 +7,9 @@
 
 ## 🌟 Demo
 
-**🔗 Xem demo trực tiếp:** [https://d4m-dev.github.io/WidgetMusic.com/](https://d4m-dev.github.io/WidgetMusic.com/)
+**🔗 Xem demo trực tiếp:** [Tại đây](https://d4m-dev.github.io/WidgetMusic.com/)
 
-**📱 Trang giới thiệu & trải nghiệm:** [https://d4m-dev.github.io/WidgetMusic.com/demo.html](https://d4m-dev.github.io/WidgetMusic.com/demo.html)
+**📱 Trang giới thiệu & trải nghiệm:** [Tại đây](https://d4m-dev.github.io/WidgetMusic.com/demo.html)
 
 ## ✨ Tính năng
 
